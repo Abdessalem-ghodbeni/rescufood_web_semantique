@@ -5,15 +5,21 @@ import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
+import org.apache.jena.update.UpdateExecutionFactory;
+import org.apache.jena.update.UpdateFactory;
+import org.apache.jena.update.UpdateRequest;
+import org.apache.jena.vocabulary.RDF;
 import org.springframework.stereotype.Service;
-
+import org.apache.jena.rdf.model.*;
 import java.util.ArrayList;
 import java.util.List;
-
+import java.io.FileOutputStream;
+import java.io.OutputStream;
 @Service
 public class RestaurantService {
     private static final String SPARQL_ENDPOINT = "http://localhost:3030/dataSet/sparql";
-
+    private static final String UPDATE_ENDPOINT = "http://localhost:3030/dataSet/update"; // Pour les requêtes d'insertion
+    private static final String OWL_FILE_PATH = "C:/Users/MSI/Downloads/project (1).owl";
     // Method to retrieve restaurants located in Tunis
     public List<Restaurant> getRestaurantsInTunis() {
         List<Restaurant> restaurants = new ArrayList<>();
@@ -149,5 +155,64 @@ public class RestaurantService {
 
         return restaurants;
     }
+
+
+    public boolean addRestaurant(Restaurant restaurant) {
+        String sparqlInsertQuery = "PREFIX ex: <http://example.com/restaurant#> " +
+                "PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> " +
+                "INSERT DATA { " +
+                "<http://example.com/restaurant#" + restaurant.getId() + "> rdf:type ex:Restaurant ; " +
+                "ex:hasName \"" + restaurant.getName() + "\"^^<http://www.w3.org/2001/XMLSchema#string> ; " +
+                (restaurant.getEmail() != null ? "ex:hasEmail \"" + restaurant.getEmail() + "\"^^<http://www.w3.org/2001/XMLSchema#string> ; " : "") +
+                (restaurant.getSpeciality() != null ? "ex:hasSpeciality \"" + restaurant.getSpeciality() + "\"^^<http://www.w3.org/2001/XMLSchema#string> ; " : "") +
+                (restaurant.getLocation() != null ? "ex:hasLocation \"" + restaurant.getLocation() + "\"^^<http://www.w3.org/2001/XMLSchema#string> ; " : "") +
+                "}";
+
+        try {
+            UpdateRequest update = UpdateFactory.create(sparqlInsertQuery);
+            UpdateExecutionFactory.createRemote(update, UPDATE_ENDPOINT).execute();
+            writeRestaurantToOWL(restaurant);
+            return true;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    private void writeRestaurantToOWL(Restaurant restaurant) {
+        // Créer ou charger un modèle RDF existant
+        Model model = ModelFactory.createDefaultModel();
+
+        // Charger le contenu du fichier OWL existant
+        try {
+            model.read(OWL_FILE_PATH);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        // Ajouter les propriétés du restaurant
+        Resource restaurantResource = model.createResource("http://example.com/restaurant#" + restaurant.getId());
+        restaurantResource.addProperty(RDF.type, model.createResource("http://example.com/restaurant#Restaurant"));
+        restaurantResource.addProperty(model.createProperty("http://example.com/restaurant#hasName"), restaurant.getName());
+        if (restaurant.getEmail() != null) {
+            restaurantResource.addProperty(model.createProperty("http://example.com/restaurant#hasEmail"), restaurant.getEmail());
+        }
+        if (restaurant.getSpeciality() != null) {
+            restaurantResource.addProperty(model.createProperty("http://example.com/restaurant#hasSpeciality"), restaurant.getSpeciality());
+        }
+        if (restaurant.getLocation() != null) {
+            restaurantResource.addProperty(model.createProperty("http://example.com/restaurant#hasLocation"), restaurant.getLocation());
+        }
+
+        // Écrire le modèle RDF modifié dans le fichier OWL
+        try (OutputStream out = new FileOutputStream(OWL_FILE_PATH)) {
+            model.write(out, "RDF/XML");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+
+
 
 }
